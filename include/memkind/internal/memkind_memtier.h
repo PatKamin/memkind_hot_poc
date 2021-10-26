@@ -257,6 +257,7 @@ extern double pebs_freq_hz;
 extern unsigned long long hotness_measure_window;
 extern double old_time_window_hotness_weight;
 #define RANKING_BUFFER_SIZE_ELEMENTS    1000000 // TODO make tests, add error handling and come up with some sensible value
+#define RANKING_TOUCH_ALL 1
 
 // logging
 #define PEBS_LOG_TO_FILE 0

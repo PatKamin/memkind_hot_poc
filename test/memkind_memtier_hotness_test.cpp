@@ -269,6 +269,57 @@ TEST_P(MemkindMemtierHotnessTest, test_matmul)
 INSTANTIATE_TEST_CASE_P(numObjsParam, MemkindMemtierHotnessTest,
                         ::testing::Values(3, 20));
 
+TEST_F(MemkindMemtierHotnessTest, check_ranking_touch_all) {
+    const int MALLOC_COUNT = 5;
+    __u64 hotness_measure_window = 1000000000; // equals to the hotness_measure_window defined in pebs_init()
+    __u64 wait_time = hotness_measure_window + 1;
+    std::vector<void *> malloc_vec;
+
+    int res = memtier_builder_add_tier(m_builder, MEMKIND_DEFAULT, 1);
+    ASSERT_EQ(0, res);
+    res = memtier_builder_add_tier(m_builder, MEMKIND_REGULAR, 1);
+    ASSERT_EQ(0, res);
+    m_tier_memory = memtier_builder_construct_memtier_memory(m_builder);
+    ASSERT_NE(nullptr, m_tier_memory);
+
+    for (size_t i = 1; i <= MALLOC_COUNT; ++i) {
+        void *ptr = memtier_malloc(m_tier_memory, i);
+        ASSERT_NE(nullptr, ptr);
+        malloc_vec.push_back(ptr);
+    }
+
+    
+    sleep(1); // wait for pebs_monitor() to register new types from memtier_mallocs
+
+    for (size_t i = 0; i < MALLOC_COUNT; ++i) {
+        ASSERT_EQ(tachanka_get_timestamp_state(i), TIMESTAMP_NOT_SET);
+    }
+    tachanka_ranking_touch_all(wait_time, 0); // set timestamp state to TIMESTAMP_INIT
+    for (size_t i = 0; i < MALLOC_COUNT; ++i) {
+        ASSERT_EQ(tachanka_get_frequency(i), 0);
+    }
+    for (size_t i = 0; i < MALLOC_COUNT; ++i) {
+        ASSERT_EQ(tachanka_get_timestamp_state(i), TIMESTAMP_INIT);
+    }
+
+    tachanka_ranking_touch_all(2 * wait_time, 1e6); // set timestamp state to TIMESTAMP_INIT_DONE, set f to non-zero value
+    for (size_t i = 0; i < MALLOC_COUNT; ++i) {
+        ASSERT_EQ(tachanka_get_frequency(i), 0);
+    }
+    for (size_t i = 0; i < MALLOC_COUNT; ++i) {
+        ASSERT_EQ(tachanka_get_timestamp_state(i), TIMESTAMP_INIT_DONE);
+    }
+
+    tachanka_ranking_touch_all(3 * wait_time, 0);  // touch all ttypes without adding the hotness
+    for (size_t i = 0; i < MALLOC_COUNT; ++i) {
+        ASSERT_GT(tachanka_get_frequency(i), 0);
+    }
+
+    for (auto const &ptr : malloc_vec) {
+        memtier_free(ptr);
+    }
+}
+
 // ----------------- hotness thresh tests
 
 extern "C" {

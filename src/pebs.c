@@ -228,6 +228,8 @@ void *pebs_monitor(void *state)
             log_info("PEBS: new data to process!");
 #endif
             int samples = 0;
+            __u64 timestamp = *(__u64*)(pebs_mmap + getpagesize() +
+                    last_head % (MMAP_DATA_SIZE * getpagesize()));
 
             while (last_head < pebs_metadata->data_head) {
 	            char *data_mmap = pebs_mmap + getpagesize() +
@@ -253,7 +255,7 @@ void *pebs_monitor(void *state)
                 switch (event->type) {
                     case PERF_RECORD_SAMPLE:
                     {
-                        __u64 timestamp = *(__u64*)(data_mmap + sizeof(struct perf_event_header));
+                        timestamp = *(__u64*)(data_mmap + sizeof(struct perf_event_header));
                         // 'addr' is the acessed address
                         __u64 addr = *(__u64*)(data_mmap + sizeof(struct perf_event_header) + sizeof(__u64));
 
@@ -319,6 +321,11 @@ void *pebs_monitor(void *state)
                 data_mmap += event->size;
                 samples++;
             }
+
+#if RANKING_TOUCH_ALL
+            // Touch every ttype object to update hotness
+            tachanka_ranking_touch_all(timestamp, 0);
+#endif
 
 #if PRINT_PEBS_SAMPLES_NUM_INFO
             log_info("PEBS: processed %d samples", samples);
